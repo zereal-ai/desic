@@ -1,6 +1,6 @@
 # desic - Clojure's take on DSPy
 
-> **Purpose** – This file is the *complete*, self-contained engineering blueprint for a pure-Clojure rewrite of DSPy.  
+> **Purpose** – This file is the *complete*, self-contained engineering blueprint for a pure-Clojure rewrite of DSPy.
 > Reading only this document, a dev can scaffold, code, test, package, and ship the project from an empty Git repo.
 
 ---
@@ -44,7 +44,7 @@ Secrets are injected via environment variables (e.g. `OPENAI_API_KEY`).
 │       │   ├── openai.clj
 │       │   └── wrappers.clj ; retry, throttle
 │       ├── pipeline.clj    ; DAG compile & run
-│       ├── optimise.clj    ; beam search engine
+│       ├── optimize.clj    ; beam search engine
 │       ├── storage.clj     ; EDN + SQLite
 │       ├── util/
 │       │   └── manifold.clj
@@ -113,7 +113,7 @@ Secrets are injected via environment variables (e.g. `OPENAI_API_KEY`).
 
 ## Milestone 1 – Core DSL
 
-Goal: provide the declarative language layer (signatures, modules, pipelines) so later milestones can compile, optimise, and run AI workflows.
+Goal: provide the declarative language layer (signatures, modules, pipelines) so later milestones can compile, optimize, and run AI workflows.
 
 ### 1-1 · `defsignature` Macro
 
@@ -219,7 +219,7 @@ Goal: provide the declarative language layer (signatures, modules, pipelines) so
 
 ## Milestone 2 – LLM Back-End Integration
 
-Goal: provide an extensible back-end abstraction (protocol + registry) and a first concrete implementation using **openai-clojure**. All later code (optimiser, modules) must interact only with the protocol, never the concrete client.
+Goal: provide an extensible back-end abstraction (protocol + registry) and a first concrete implementation using **openai-clojure**. All later code (optimizer, modules) must interact only with the protocol, never the concrete client.
 
 ### 2-1 · `ILlmBackend` Protocol
 
@@ -233,7 +233,7 @@ Goal: provide an extensible back-end abstraction (protocol + registry) and a fir
 (defprotocol ILlmBackend
   (-generate  [this prompt opts]  ;; -> deferred {:text "…" :usage {:prompt 12 :completion 32}}
               "Single completion (async).")
-  (-embeddings [this text opts]   ;; -> deferred {:vector [...]}  
+  (-embeddings [this text opts]   ;; -> deferred {:vector [...]}
               "Return embedding vector.")
   (-stream    [this prompt opts]  ;; nullable deferred that emits pieces
               "Optional server-sent stream."))
@@ -331,23 +331,23 @@ Goal: provide an extensible back-end abstraction (protocol + registry) and a fir
 
 **Steps:**
 1. Load tiny signature/pipeline that echoes a question
-2. Optimise over 3 examples (metric exact-match)
-3. Assert optimiser returns improved score > 0
+2. optimize over 3 examples (metric exact-match)
+3. Assert optimizer returns improved score > 0
 
 **DoD:** Running `clj -M:test` locally with the env flag hits real API once and passes. CI skips if flag absent.
 
-## Milestone 3 – Optimiser / Teleprompter Engine
+## Milestone 3 – optimizer / Teleprompter Engine
 
-Goal: implement a metric-driven optimisation layer that automatically searches for better prompt/pipeline variants. Everything below relies only on the DSL & backend abstractions from Milestones 1-2.
+Goal: implement a metric-driven optimization layer that automatically searches for better prompt/pipeline variants. Everything below relies only on the DSL & backend abstractions from Milestones 1-2.
 
 ### 3-1 · Search API Skeleton
 
-**Paths:** `src/dspy/optimise.clj`
+**Paths:** `src/dspy/optimize.clj`
 
 **Public fn:**
 
 ```clojure
-(defn optimise
+(defn optimize
   "Return {:best-pipeline compiled-pipeline
            :history       [ {:iter 0 :score 0.42 :pipeline …} … ]}"
   [pipeline trainset metric {:keys [strategy] :or {strategy :beam} :as opts}])
@@ -358,13 +358,13 @@ Goal: implement a metric-driven optimisation layer that automatically searches f
 2. Validate that `trainset` is a seq of maps fitting pipeline input spec (use Malli)
 3. Dispatch to `(compile-strategy strategy)` multimethod (see ticket 3-3)
 
-**Tests:** Stub strategy that returns pipeline unchanged; ensure `(optimise p trainset metric {})` returns same pipeline & history length ≥ 1.
+**Tests:** Stub strategy that returns pipeline unchanged; ensure `(optimize p trainset metric {})` returns same pipeline & history length ≥ 1.
 
-**DoD:** Function documented, argument validation errors are `ex-info` with `:phase :optimise`.
+**DoD:** Function documented, argument validation errors are `ex-info` with `:phase :optimize`.
 
 ### 3-2 · Beam-Search Strategy
 
-**Paths:** `src/dspy/optimise/beam.clj` (separate ns)
+**Paths:** `src/dspy/optimize/beam.clj` (separate ns)
 
 **Algorithm:** Iterative widening beam search over prompt candidates produced by a *prompt-mutator* fn (plug later).
 
@@ -388,13 +388,13 @@ Goal: implement a metric-driven optimisation layer that automatically searches f
 
 ### 3-3 · Strategy Multimethod Registry
 
-**Paths:** `src/dspy/optimise.clj` (same ns as API)
+**Paths:** `src/dspy/optimize.clj` (same ns as API)
 
 **Code:**
 
 ```clojure
 (defmulti compile-strategy keyword)
-(defmethod compile-strategy :beam [_] dspy.optimise.beam/strategy)
+(defmethod compile-strategy :beam [_] dspy.optimize.beam/strategy)
 ```
 
 **Extensibility:** Down-stream libs can `(defmethod compile-strategy :bayes [_] …)` without modifying core.
@@ -408,15 +408,15 @@ Goal: implement a metric-driven optimisation layer that automatically searches f
 **Paths:** `src/dspy/tap.clj`, `src/dspy/storage.clj`
 
 **Steps:**
-1. From inside the beam loop call `(tap> {:event :optimiser/iter :data state})` so Portal users can watch progress
+1. From inside the beam loop call `(tap> {:event :optimizer/iter :data state})` so Portal users can watch progress
 2. Persist after each iteration: `(storage/append-metric! run-id state)` where storage toggles EDN or SQLite
-3. Provide `(resume-run run-id)` in `optimise.clj` that loads last checkpoint and continues
+3. Provide `(resume-run run-id)` in `optimize.clj` that loads last checkpoint and continues
 
 **Tests:**
 1. Unit: after three iterations EDN file has three entries
-2. Kill-resume test: interrupt optimiser at iter 2, restart with same run-id; it continues at iter 3
+2. Kill-resume test: interrupt optimizer at iter 2, restart with same run-id; it continues at iter 3
 
-**DoD:** Resumable optimisation; Portal shows real-time progress; storage write performance < 5 ms per iteration.
+**DoD:** Resumable optimization; Portal shows real-time progress; storage write performance < 5 ms per iteration.
 
 ## Milestone 4 – Concurrency & Rate-Limit Management
 
@@ -496,7 +496,7 @@ Goal: guarantee that large batches of LLM calls respect provider rate-limits, ru
 
 ## Milestone 5 – Validation & Instrumentation
 
-Goal: guarantee that every module respects its declared input/output schema and provide rich, live introspection via Portal (or any `tap>` viewer) during optimisation and runtime.
+Goal: guarantee that every module respects its declared input/output schema and provide rich, live introspection via Portal (or any `tap>` viewer) during optimization and runtime.
 
 ### 5-1 · Malli Spec Registry
 
@@ -523,7 +523,7 @@ Goal: guarantee that every module respects its declared input/output schema and 
 3. Provide `(defn install! [] (add-tap #'p/submit))` and call it from `user.clj` in `dev/` folder
 4. Emit events:
    • from modules: `(tap> {:event :module/exec :module (type m) :in input :out result})`
-   • from optimiser loop: see Milestone 3, ticket 3-4
+   • from optimizer loop: see Milestone 3, ticket 3-4
 
 **Tests:** Manual QA: start `make repl`, evaluate `(tap> {:foo 1})` and confirm entry appears in Portal.
 
@@ -544,7 +544,7 @@ Goal: guarantee that every module respects its declared input/output schema and 
 
 ## Milestone 6 – Persistence Layer
 
-Goal: persist optimisation runs, metrics, and pipeline blobs so they can be resumed or audited later. Two interchangeable back-ends are provided:
+Goal: persist optimization runs, metrics, and pipeline blobs so they can be resumed or audited later. Two interchangeable back-ends are provided:
 
 * **SQLite** via `next.jdbc` – default in production, file-based, zero server.
 * **EDN file** – simplest, on by default in dev tests or where no DB is wanted.
@@ -606,7 +606,7 @@ CREATE TABLE IF NOT EXISTS metrics (
 
 **Performance target:** append-metric ≤ 5 ms on laptop SSD for SQLite; EDN ≤ 2 ms.
 
-**DoD:** `make-storage` selected via config; optimiser (Milestone 3) persists through the protocol only.
+**DoD:** `make-storage` selected via config; optimizer (Milestone 3) persists through the protocol only.
 
 ### 6-3 · EDN Fallback Toggle
 
@@ -620,7 +620,7 @@ CREATE TABLE IF NOT EXISTS metrics (
 1. No storage config given → returns EDN backend
 2. `DSPY_STORAGE=sqlite://:memory:` env → returns SQLite backend
 
-**DoD:** Fallback documented in README; optimiser resume works under both back-ends.
+**DoD:** Fallback documented in README; optimizer resume works under both back-ends.
 
 ## Milestone 7 – Packaging & Release
 
@@ -673,10 +673,10 @@ Goal: produce a single self-contained **uberjar** (`dspy-clj-standalone.jar`) pl
 
 **Steps:**
 1. `(ns dspy.cli (:require [clojure.tools.cli :refer [parse-opts]] [dspy.core :as core]))`
-2. Define opts spec: `--compile`, `--optimise`, `--config`, `--out`
+2. Define opts spec: `--compile`, `--optimize`, `--config`, `--out`
 3. `(-main & args)` parses, dispatches:
    * compile: `(spit out (pr-str (core/compile-pipeline cfg)))`
-   * optimise: `(core/optimise pipeline trainset metric cfg)` then `spit` results
+   * optimize: `(core/optimize pipeline trainset metric cfg)` then `spit` results
 4. Add `:gen-class` so AOT main class lands in uberjar
 
 **Help banner:**
@@ -686,7 +686,7 @@ dspy [subcommand] [options]
 
 Subcommands:
   compile   Compile EDN pipeline to compiled.edn
-  optimise  Optimise pipeline against trainset
+  optimize  optimize pipeline against trainset
 
 Global options:
   --config FILE   Root config EDN (default: config.edn)
@@ -751,10 +751,10 @@ Goal: make every commit merge-safe by enforcing linting, test coverage, benchmar
 
 **Library:** `criterium/criterium`
 
-**Scenario:** Compare optimiser run (5 iterations, small trainset) **serial vs parallel** (`parallel-map` with 8 concurrency).
+**Scenario:** Compare optimizer run (5 iterations, small trainset) **serial vs parallel** (`parallel-map` with 8 concurrency).
 
 **Steps:**
-1. Write `(defn bench [] (crit/quick-bench (optimise p ts m {:strategy :beam :concurrency 1})) …)`
+1. Write `(defn bench [] (crit/quick-bench (optimize p ts m {:strategy :beam :concurrency 1})) …)`
 2. Add CI step under nightly cron to run `clj -M:bench` and upload results as artifact
 
 **Regression Rule:** If parallel run is > 10% slower than baseline of last run, job fails.

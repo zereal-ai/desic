@@ -14,7 +14,7 @@
 ### **Systematic Optimization**
 Stop guessing at prompts. desic's optimizers automatically tune your LLM parameters using beam search, few-shot learning, and metric-driven compilation—often producing better results than hand-crafted prompts.
 
-### **Separation of Concerns** 
+### **Separation of Concerns**
 Write your pipeline logic once. Let desic handle the LLM parameters (prompts, examples, weights) separately, so changes to models or data don't break your entire system.
 
 ### **Built for Concurrency**
@@ -38,20 +38,20 @@ Compile to a single uberjar that runs anywhere with Java. No Python runtime, no 
 ;; Define behavior declaratively
 (defsignature QA (question => answer))
 
-;; Compose into pipelines  
+;; Compose into pipelines
 (defn my-rag [question]
   (-> question
       retrieve-context
       (generate-answer :sig QA)))
 
 ;; Optimize automatically
-(optimise my-rag trainset exact-match-metric)
+(optimize my-rag trainset exact-match-metric)
 ```
 
 ## Key Differentiators
 
 - **Pure Clojure**: Leverage JVM ecosystem without Python interop complexity
-- **Functional**: Immutable pipelines, composable modules, predictable behavior  
+- **Functional**: Immutable pipelines, composable modules, predictable behavior
 - **Production-Ready Design**: Rate limiting, circuit breakers, monitoring, and deployment tools included
 - **Extensible**: Plugin architecture for custom backends, optimizers, and storage layers
 
@@ -72,6 +72,51 @@ Compile to a single uberjar that runs anywhere with Java. No Python runtime, no 
 
 Perfect for building reliable RAG systems, multi-agent workflows, and complex reasoning pipelines that need to work consistently at scale.
 
+## Development
+
+### Prerequisites
+- Java 17+
+- Clojure CLI tools
+- Babashka (for task runner)
+
+### Quick Start
+```bash
+# Install dependencies and run tests
+bb ci
+
+# Start development REPL with Portal
+bb repl
+
+# Run the full test suite
+bb test
+
+# Build a production uberjar
+bb uber
+```
+
+### Available Tasks
+Run `bb tasks` to see all available tasks:
+
+- **`bb repl`** - Start development REPL with Portal and CIDER middleware
+- **`bb test`** - Run test suite with Kaocha
+- **`bb lint`** - Run clj-kondo static analysis
+- **`bb ci`** - Run CI pipeline (lint + test)
+- **`bb uber`** - Build standalone uberjar
+- **`bb clean`** - Clean build artifacts
+- **`bb status`** - Show project status
+- **`bb test-watch`** - Run tests in watch mode
+- **`bb help`** - Show enhanced help with emojis
+
+### REPL-Driven Development
+
+This project follows REPL-driven development practices:
+
+1. Start the REPL: `bb repl`
+2. Connect your editor (CIDER, Calva, etc.)
+3. Evaluate code interactively
+4. Use Portal for live data inspection
+5. Run tests continuously with `bb test-watch`
+
 ---
 
-**Alpha Status**: Early development stage • See [PLAN.md](PLAN.md) for complete implementation roadmap 
+**Alpha Status**: Early development stage • See [PLAN.md](PLAN.md) for complete implementation roadmap

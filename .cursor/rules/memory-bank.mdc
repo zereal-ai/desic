@@ -1,6 +1,6 @@
 ---
-description: 
-globs: 
+description:
+globs:
 alwaysApply: true
 ---
 # Cursor's Memory Bank
@@ -16,11 +16,11 @@ flowchart TD
     PB[projectbrief.md] --> PC[productContext.md]
     PB --> SP[systemPatterns.md]
     PB --> TC[techContext.md]
-    
+
     PC --> AC[activeContext.md]
     SP --> AC
     TC --> AC
-    
+
     AC --> P[progress.md]
 ```
 
@@ -76,10 +76,10 @@ Create additional files/folders within memory-bank/ when they help organize:
 flowchart TD
     Start[Start] --> ReadFiles[Read Memory Bank]
     ReadFiles --> CheckFiles{Files Complete?}
-    
+
     CheckFiles -->|No| Plan[Create Plan]
     Plan --> Document[Document in Chat]
-    
+
     CheckFiles -->|Yes| Verify[Verify Context]
     Verify --> Strategy[Develop Strategy]
     Strategy --> Present[Present Approach]
@@ -106,16 +106,16 @@ Memory Bank updates occur when:
 ```mermaid
 flowchart TD
     Start[Update Process]
-    
+
     subgraph Process
         P1[Review ALL Files]
         P2[Document Current State]
         P3[Clarify Next Steps]
         P4[Update Project Rules]
-        
+
         P1 --> P2 --> P3 --> P4
     end
-    
+
     Start --> Process
 ```
 
@@ -130,20 +130,20 @@ Cursor's new rules system provides powerful ways to maintain project intelligenc
 ```mermaid
 flowchart TD
     Start{New Intelligence}
-    
+
     subgraph RuleTypes ["Rule Types"]
         Always["Always Applied<br/>Core project patterns"]
         AutoAttach["Auto Attached<br/>Context-specific rules"]
         AgentReq["Agent Requested<br/>AI-chosen rules"]
         Manual["Manual<br/>@ruleName references"]
     end
-    
+
     subgraph Storage ["Storage Locations"]
         ProjectRules[".cursor/rules/<br/>Project-specific"]
         UserRules["Settings<br/>Global preferences"]
         Memories["Auto-generated<br/>From conversations"]
     end
-    
+
     Start --> RuleTypes
     RuleTypes --> Storage
 ```
@@ -214,12 +214,12 @@ flowchart TD
     Discover[Discover Pattern] --> Validate[Validate with User]
     Validate --> Create[Create Rule File]
     Create --> Type{Choose Rule Type}
-    
+
     Type -->|Core Pattern| Always[Always Applied]
     Type -->|File-Specific| Auto[Auto Attached]
     Type -->|AI Choice| Agent[Agent Requested]
     Type -->|On-Demand| Manual[Manual Reference]
-    
+
     Always --> Apply[Rule Applied]
     Auto --> Apply
     Agent --> Apply
