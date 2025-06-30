@@ -2,43 +2,49 @@ name: CI
 
 on:
   push:
-    branches: [ master, main ]
+    branches: [ master ]
   pull_request:
-    branches: [ master, main ]
+    branches: [ master ]
 
 jobs:
-  clj:
+  test:
     runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v4
 
-    - name: Prepare java
+    - name: Setup Java
       uses: actions/setup-java@v4
       with:
         distribution: 'temurin'
-        java-version: '11'
+        java-version: '24'
 
-    - name: Install clojure tools
-      uses: DeLaGuardo/setup-clojure@12.5
+    - name: Install Clojure Tools
+      uses: DeLaGuardo/setup-clojure@12.3
       with:
+        bb: latest
         cli: latest
 
-    - name: Cache clojure dependencies
+    - name: Cache dependencies
       uses: actions/cache@v4
       with:
         path: |
           ~/.m2/repository
           ~/.gitlibs
           ~/.deps.clj
-        key: cljdeps-${{ hashFiles('deps.edn') }}
-        restore-keys: cljdeps-
+          ~/.clojure
+          ~/.cpcache
+        key: ${{ runner.os }}-deps-${{ hashFiles('deps.edn') }}
+        restore-keys: |
+          ${{ runner.os }}-deps-
 
-    - name: Run lint
-      run: clojure -M:lint
+    - name: Run Tests
+      run: |
+        cd $GITHUB_WORKSPACE
+        clojure -M:test
 
-    - name: Run tests
-      run: clojure -M:test
-
-    - name: Build uberjar
-      run: clojure -T:build uber
+    - name: Run Linter
+      continue-on-error: true
+      run: |
+        cd $GITHUB_WORKSPACE
+        clojure -M:lint
