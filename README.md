@@ -3,7 +3,7 @@
 
 > **A pure-Clojure implementation of DSPy** — systematic optimization for LLM pipelines without the prompt engineering chaos.
 
-[![CI](https://github.com/your-username/desic/workflows/CI/badge.svg)](https://github.com/your-username/desic/actions)
+[![CI](https://github.com/zereal-ai/desic/workflows/CI/badge.svg)](https://github.com/zereal-ai/desic/actions)
 ⚠️ **Alpha Stage**: This project is in active development and not yet production-ready.
 
 ## What is desic?
