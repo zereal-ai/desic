@@ -89,10 +89,10 @@
 ;; Test backend registry
 
 (deftest test-backend-registry
-  (testing "Unknown backend type throws exception"
+  (testing "Unknown backend provider throws exception"
     (is (thrown-with-msg?
          clojure.lang.ExceptionInfo
-         #"Unknown backend type"
+         #"Unknown backend provider"
          (bp/create-backend {:type :unknown}))))
 
   (testing "Exception contains helpful error data"
@@ -100,15 +100,15 @@
       (bp/create-backend {:type :unknown :model "test"})
       (catch Exception e
         (let [data (ex-data e)]
-          (is (= :unknown (:type data)))
-          (is (vector? (:supported-types data)))
+          (is (= :unknown (:provider data)))
+          (is (vector? (:supported-providers data)))
           (is (contains? data :config))))))
 
   (testing "Can extend registry with new backend"
     (defmethod bp/create-backend :test [_config]
       (->mock-backend))
 
-    (let [backend (bp/create-backend {:type :test})]
+    (let [backend (bp/create-backend {:provider :test})]
       (is (bp/backend? backend))
       (is (satisfies? bp/ILlmBackend backend)))))
 

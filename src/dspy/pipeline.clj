@@ -119,7 +119,7 @@
                                   batch-result @(execute-stage-batch current-batch accumulated-outputs inputs)]
                               (recur (rest remaining-batches)
                                      (merge accumulated-outputs batch-result)))))]
-      ;; Merge all stage outputs with original inputs  
+      ;; Merge all stage outputs with original inputs
       (d/success-deferred
        (reduce (fn [acc [_stage-id stage-output]]
                  (merge acc stage-output))

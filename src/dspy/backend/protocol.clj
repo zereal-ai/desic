@@ -97,22 +97,42 @@
 (defmulti create-backend
   "Create a backend instance from configuration.
 
-   Dispatches on the :type key in the config map.
+   Dispatches on the :provider key in the config map (with backward compatibility for :type).
 
    Example config:
+     {:provider :openai
+      :model \"gpt-4o-mini\"
+      :api-key \"sk-...\"}
+
+     {:provider :anthropic
+      :model \"claude-3-sonnet\"
+      :api-key \"sk-ant-...\"}
+
+   Legacy config (backward compatibility):
      {:type :openai
       :model \"gpt-4o-mini\"
       :api-key \"sk-...\"}
 
    Returns:
      Backend instance satisfying ILlmBackend protocol"
-  (fn [config] (:type config)))
+  (fn [config] (or (:provider config) (:type config))))
 
 (defmethod create-backend :default [config]
-  (throw (ex-info "Unknown backend type"
-                  {:type (:type config)
-                   :supported-types [:openai]
+  (throw (ex-info "Unknown backend provider"
+                  {:provider (or (:provider config) (:type config))
+                   :supported-providers [:openai]
                    :config config})))
+
+(defn get-available-providers
+  "Get list of available backend providers.
+
+   Inspects the create-backend multimethod to determine which providers are registered."
+  []
+  (->> (methods create-backend)
+       (keys)
+       (remove #(= % :default))
+       (sort)
+       (vec)))
 
 ;; Utility functions
 

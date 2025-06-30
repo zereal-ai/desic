@@ -65,7 +65,7 @@
 (defmethod compile-strategy :random [_]
   "Random strategy placeholder - not yet implemented"
   (fn [_pipeline _trainset _metric _opts]
-    ;; TODO: Implement proper random search optimization  
+    ;; TODO: Implement proper random search optimization
     ;; For now, throw clear error indicating incomplete implementation
     (throw (ex-info "Random strategy not yet implemented"
                     {:phase :optimize
