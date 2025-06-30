@@ -35,7 +35,10 @@ jobs:
         restore-keys: cljdeps-
 
     - name: Run lint
-      run: make lint
+      run: clojure -M:lint
 
     - name: Run tests
-      run: make test
+      run: clojure -M:test
+
+    - name: Build uberjar
+      run: clojure -T:build uber
