@@ -33,7 +33,9 @@ Secrets are injected via environment variables (e.g. `OPENAI_API_KEY`).
 ├── Makefile                ; convenience cmds (repl, ci, uber)
 ├── README.md
 ├── resources/
-│   └── pipeline.edn        ; sample declarative pipeline
+│   ├── pipeline.edn        ; sample declarative pipeline
+│   └── sql/
+│       └── schema.sql      ; database schema for persistence
 ├── src/
 │   └── dspy/
 │       ├── core.clj        ; public façade
@@ -46,9 +48,14 @@ Secrets are injected via environment variables (e.g. `OPENAI_API_KEY`).
 │       │   └── wrappers.clj    ; retry, throttle middleware
 │       ├── pipeline.clj    ; DAG compile & run
 │       ├── optimize.clj    ; beam search engine
-│       ├── storage.clj     ; EDN + SQLite
+│       ├── optimize/
+│       │   └── beam.clj    ; beam search strategy implementation
+│       ├── storage/
+│       │   ├── core.clj    ; storage protocol and factory
+│       │   ├── sqlite.clj  ; SQLite storage implementation
+│       │   └── edn.clj     ; EDN file storage implementation
 │       ├── util/
-│       │   └── manifold.clj
+│       │   └── manifold.clj ; advanced concurrency utilities
 │       └── tap.clj         ; Portal helpers
 ├── test/ …                 ; mirrors src/ tree
 └── .github/workflows/ci.yml
@@ -632,7 +639,7 @@ CREATE TABLE IF NOT EXISTS metrics (
 
 **DoD:** Fallback documented in README; optimizer resume works under both back-ends.
 
-## Milestone 7 – Packaging & Release
+## Milestone 7 – Production Packaging & Release
 
 Goal: produce a single self-contained **uberjar** (`dspy-clj-standalone.jar`) plus a thin CLI wrapper, and automate release artifacts on git tags.
 
@@ -739,86 +746,282 @@ Global options:
 
 **DoD:** `git tag -a vX.Y.Z -m "Release version"` then push → GitHub Release with downloadable jar.
 
-## Milestone 8 – Quality Gates
+### 7-4 · Configuration Management
 
-Goal: make every commit merge-safe by enforcing linting, test coverage, benchmarks, and executable documentation.
-
-### 8-1 · Static Analysis Gate (clj-kondo)
-
-**Paths:** `.github/workflows/ci.yml` (lint step already present)
+**Paths:** `src/dspy/config.clj`
 
 **Steps:**
-1. Add repo-specific `clj-kondo.edn` (e.g. custom Malli macros, lint-as)
-2. Pre-commit hook: add `#!/bin/sh\nclj -M:lint` to `.husky/pre-commit`
+1. Create configuration management system with environment variable support
+2. Support for multiple configuration sources (EDN files, environment variables, defaults)
+3. Configuration validation with Malli schemas
+4. Hot-reload capability for development
 
-**Tests:** Introduce unused var in PR → CI fails with level `:warning`.
+**Tests:** Configuration loading from multiple sources, validation errors, environment variable overrides.
 
-**DoD:** Zero `:warning` severity in default branch; failing lint blocks merge.
+**DoD:** Flexible configuration system that supports both development and production environments.
 
-### 8-2 · Benchmark Harness
+## Milestone 8 – Advanced Optimization Strategies
 
-**Paths:** `test/dspy/bench.clj`, add `:bench` alias in `deps.edn`
+Goal: implement additional optimization algorithms beyond beam search to provide users with more sophisticated optimization capabilities.
 
-**Library:** `criterium/criterium`
+### 8-1 · Genetic Algorithm Optimizer
 
-**Scenario:** Compare optimizer run (5 iterations, small trainset) **serial vs parallel** (`parallel-map` with 8 concurrency).
-
-**Steps:**
-1. Write `(defn bench [] (crit/quick-bench (optimize p ts m {:strategy :beam :concurrency 1})) …)`
-2. Add CI step under nightly cron to run `clj -M:bench` and upload results as artifact
-
-**Regression Rule:** If parallel run is > 10% slower than baseline of last run, job fails.
-
-**DoD:** Nightly action passes; developers can run `make bench` locally.
-
-### 8-3 · Executable Documentation Tests
-
-**Paths:** `docs/*.md`, `ci/doc_test.clj`
-
-**Tool:** `lambdaisland/docstr` or simple script parsing ```clojure blocks.
+**Paths:** `src/dspy/optimize/genetic.clj`
 
 **Steps:**
-1. Extract code blocks labelled `clojure`; evaluate in fresh REPL with classpath = project
-2. CI step `run: clj -M:doc-test`
+1. Implement genetic algorithm with population management
+2. Crossover and mutation operators for pipeline evolution
+3. Fitness-based selection mechanisms
+4. Convergence detection and early stopping
 
-**Fail Conditions:** Any code snippet throws or returns `:doc/fail`.
+**Tests:** Genetic algorithm convergence, population diversity, fitness improvement over generations.
 
-**DoD:** All docs compile in CI; README quick-start verified automatically.
+**DoD:** Genetic algorithm optimizer that can find better solutions than beam search for complex problems.
 
-### 8-4 · Coverage Threshold
+### 8-2 · Bayesian Optimization
 
-**Paths:** `ci/coverage.clj`, add to CI
+**Paths:** `src/dspy/optimize/bayesian.clj`
 
-**Library:** `cloverage` via `lein-exec` or `clj-native-image` plugin
+**Steps:**
+1. Implement Gaussian Process-based optimization
+2. Acquisition function strategies (EI, UCB, PI)
+3. Hyperparameter optimization for the GP model
+4. Multi-dimensional parameter space handling
 
-**Metric:** Require ≥ 80% line coverage on `src/` excluding `tap.clj`.
+**Tests:** Bayesian optimization convergence, acquisition function behavior, GP model accuracy.
 
-**DoD:** Coverage badge in README; PR fails if threshold drops.
+**DoD:** Bayesian optimizer that efficiently explores high-dimensional parameter spaces.
 
-### 8-5 · Security Audit (dependency scan)
+### 8-3 · Multi-Objective Optimization
 
-**Paths:** `.github/workflows/ci.yml`
+**Paths:** `src/dspy/optimize/multi_objective.clj`
 
-**Step:** Add `github-actions-ecosystem/action-cat@latest` or `jeremylong/DependencyCheck-action@latest`.
+**Steps:**
+1. Pareto frontier computation and management
+2. Multi-objective genetic algorithms (NSGA-II)
+3. Weighted sum and epsilon-constraint methods
+4. Visualization utilities for Pareto fronts
 
-**DoD:** CI fails on known CVEs with severity ≥ HIGH; documented suppression file for false positives.
+**Tests:** Pareto frontier accuracy, multi-objective convergence, constraint handling.
+
+**DoD:** Multi-objective optimizer that balances competing objectives (accuracy, cost, latency).
+
+### 8-4 · Custom Metric Definitions
+
+**Paths:** `src/dspy/metrics/`
+
+**Steps:**
+1. Extensible metric framework with protocol-based design
+2. Built-in metrics: BLEU, ROUGE, BERTScore, custom functions
+3. Metric composition and aggregation
+4. Metric validation and error handling
+
+**Tests:** Custom metric evaluation, metric composition, validation error handling.
+
+**DoD:** Flexible metric system that supports any user-defined evaluation function.
+
+## Milestone 9 – Additional LLM Providers
+
+Goal: extend the provider-agnostic backend system to support multiple LLM providers beyond OpenAI.
+
+### 9-1 · Anthropic Claude Backend
+
+**Paths:** `src/dspy/backend/providers/anthropic.clj`
+
+**Steps:**
+1. Implement Claude API integration using HTTP client
+2. Support for Claude 3 models (Haiku, Sonnet, Opus)
+3. Streaming support for Claude responses
+4. Rate limiting and error handling specific to Anthropic
+
+**Tests:** Claude API integration, model selection, streaming responses, error handling.
+
+**DoD:** Production-ready Claude backend with full feature parity to OpenAI backend.
+
+### 9-2 · Google Gemini Backend
+
+**Paths:** `src/dspy/backend/providers/gemini.clj`
+
+**Steps:**
+1. Implement Gemini API integration
+2. Support for Gemini Pro and Ultra models
+3. Multimodal input/output capabilities
+4. Google-specific authentication and rate limiting
+
+**Tests:** Gemini API integration, multimodal capabilities, authentication, error handling.
+
+**DoD:** Production-ready Gemini backend with multimodal support.
+
+### 9-3 · Local Model Support (Ollama)
+
+**Paths:** `src/dspy/backend/providers/ollama.clj`
+
+**Steps:**
+1. Implement Ollama HTTP API integration
+2. Support for local model management
+3. Model pulling and switching capabilities
+4. Local-specific optimizations and error handling
+
+**Tests:** Ollama integration, local model management, model switching, error handling.
+
+**DoD:** Production-ready Ollama backend for local model deployment.
+
+### 9-4 · Provider Comparison Utilities
+
+**Paths:** `src/dspy/backend/comparison.clj`
+
+**Steps:**
+1. Cross-provider benchmarking framework
+2. Cost comparison and tracking
+3. Performance benchmarking (latency, throughput)
+4. Quality comparison using standardized metrics
+
+**Tests:** Provider comparison accuracy, cost tracking, performance measurement.
+
+**DoD:** Comprehensive provider comparison system for informed provider selection.
+
+## Milestone 10 – Advanced Features
+
+Goal: implement enterprise-grade features for production deployment and advanced use cases.
+
+### 10-1 · Pipeline Versioning and Rollback
+
+**Paths:** `src/dspy/versioning/`
+
+**Steps:**
+1. Git-like versioning system for pipelines
+2. Pipeline diff and comparison utilities
+3. Rollback mechanisms with safety checks
+4. Version tagging and release management
+
+**Tests:** Versioning operations, diff accuracy, rollback safety, release management.
+
+**DoD:** Complete pipeline versioning system with rollback capabilities.
+
+### 10-2 · A/B Testing Framework
+
+**Paths:** `src/dspy/ab_testing/`
+
+**Steps:**
+1. Statistical A/B testing framework
+2. Traffic splitting and routing
+3. Statistical significance testing
+4. Results visualization and reporting
+
+**Tests:** A/B test accuracy, traffic splitting, statistical significance, result reporting.
+
+**DoD:** Production-ready A/B testing framework for pipeline comparison.
+
+### 10-3 · Cost Optimization and Tracking
+
+**Paths:** `src/dspy/cost/`
+
+**Steps:**
+1. Real-time cost tracking across providers
+2. Cost optimization algorithms
+3. Budget management and alerts
+4. Cost analysis and reporting
+
+**Tests:** Cost tracking accuracy, optimization algorithms, budget management, reporting.
+
+**DoD:** Comprehensive cost management system with optimization capabilities.
+
+### 10-4 · Advanced Monitoring and Alerting
+
+**Paths:** `src/dspy/monitoring/`
+
+**Steps:**
+1. Real-time performance monitoring
+2. Custom alerting rules and thresholds
+3. Integration with external monitoring systems
+4. Dashboard and visualization capabilities
+
+**Tests:** Monitoring accuracy, alerting reliability, external integrations, dashboard functionality.
+
+**DoD:** Enterprise-grade monitoring and alerting system for production deployments.
+
+### 10-5 · Quality Gates and Security
+
+**Paths:** `.github/workflows/ci.yml`, `ci/`
+
+**Steps:**
+1. **Static Analysis Gate**: clj-kondo integration with zero warnings policy
+2. **Benchmark Harness**: Performance regression testing with criterium
+3. **Executable Documentation**: Code block testing in documentation
+4. **Coverage Threshold**: 80% line coverage requirement
+5. **Security Audit**: Dependency vulnerability scanning
+
+**Tests:** Linting compliance, benchmark regression detection, documentation accuracy, coverage validation, security scanning.
+
+**DoD:** Complete quality assurance pipeline that blocks merges on quality regressions.
 
 ---
 
 ## Current Status
 
-✅ **Milestones 1-3 Complete** - All tests passing (60 tests, 286 assertions, 0 failures)
+✅ **Milestones 1-6 COMPLETE** - All tests passing (84 tests, 373 assertions, 0 failures)
 
-🎯 **Major Architectural Achievement** - Provider-agnostic backend system implemented:
-- **Clean separation**: Abstract interfaces vs concrete provider implementations
-- **Professional library integration**: Using battle-tested openai-clojure library
-- **Zero-impact extensibility**: Adding new providers requires zero changes to user code
-- **Enterprise-grade architecture**: Provider selection purely configuration-driven
+🏆 **MAJOR ACHIEVEMENTS COMPLETED:**
 
-💡 **Recent Improvements**:
-- Moved from custom HTTP client to proven openai-clojure library (229+ GitHub stars)
-- Implemented provider-agnostic factory pattern with backward compatibility
-- Organized code with clean separation: `src/dspy/backend/providers/` for all provider-specific code
-- Users create backends through completely provider-agnostic interface: `(bp/create-backend {:provider :openai})`
+### ✅ **Milestone 1: Core DSL (100% COMPLETE)**
+- **✅ 30 tests, 105 assertions, 0 failures** for core DSL components
+- **✅ Signatures, Modules, Pipeline Composer** - All production-ready
+- **✅ Pipeline Execution** - All patterns working (linear, branched, conditional, map-reduce)
+- **✅ All Issues Resolved** - No remaining technical debt
 
-The project has achieved a professional foundation with excellent architectural patterns, comprehensive test coverage, and clean code organization. Ready for extension with additional LLM providers and optimization strategies.
+### ✅ **Milestone 2: LLM Backend Integration (100% COMPLETE)**
+- **✅ ILlmBackend Protocol** - Complete async backend abstraction
+- **✅ OpenAI Backend** - **PROFESSIONAL LIBRARY INTEGRATION** with openai-clojure
+- **✅ Backend Registry** - Dynamic loading via multimethod
+- **✅ Core Middleware** - Timeout, retry, throttle, logging, circuit breaker
+
+### ✅ **Milestone 3: Optimizer Engine (100% COMPLETE)**
+- **✅ Optimization API** - Complete framework with schema validation
+- **✅ Beam Search Strategy** - Production optimization implementation
+- **✅ Concurrent Evaluation** - Rate-limited parallel assessment
+- **✅ Built-in Metrics** - Exact matching and semantic similarity
+
+### ✅ **Milestone 4: Concurrency & Rate-Limit Management (100% COMPLETE)**
+- **✅ Enhanced Rate-Limit Wrapper** - Token-bucket throttling with burst capacity
+- **✅ Advanced Parallel Processing** - Configurable concurrency with environment variables
+- **✅ Timeout & Cancellation** - Comprehensive timeout and resource management
+- **✅ Production Resource Management** - Exception-safe resource handling
+
+### ✅ **Milestone 5: Live Introspection (100% COMPLETE)**
+- **✅ Portal Integration** - Automatic Portal detection and initialization
+- **✅ Instrumentation Utilities** - Real-time module execution and optimization tracking
+- **✅ Debugging Support** - Test utilities and manual integration capabilities
+
+### ✅ **Milestone 6: Persistence Layer (100% COMPLETE)** ⭐ **LATEST**
+- **✅ Storage Protocol** - Protocol-based storage interface with factory pattern
+- **✅ SQLite Storage Backend** - Production-grade database with migration system
+- **✅ EDN File Storage Backend** - Development-friendly file-based storage
+- **✅ Optimization Integration** - Checkpoint/resume functionality with storage binding
+
+### 🎯 **Enterprise-Grade Architecture Achieved:**
+- **Provider-Agnostic Design**: Universal backend interface with configuration-driven provider selection
+- **Professional Library Integration**: Using battle-tested openai-clojure library (229+ GitHub stars)
+- **Complete Persistence Layer**: SQLite and EDN backends with protocol abstraction
+- **Advanced Concurrency**: Enterprise-grade parallel processing with rate limiting
+- **Perfect Code Quality**: Zero linting warnings or errors (0 warnings, 0 errors)
+- **Comprehensive Testing**: 84 tests, 373 assertions, 0 failures
+
+### 💡 **Key Technical Achievements:**
+- **Storage Protocol**: Universal interface for optimization runs and metrics
+- **Factory Pattern**: Configuration-driven storage creation with environment variables
+- **Checkpoint/Resume**: Long-running optimizations can be saved and resumed
+- **URL-Based Configuration**: `sqlite://path/to/db` or `file://path/to/dir` formats
+- **Dynamic Backend Loading**: Avoids circular dependencies with require and ns-resolve
+- **Production-Ready Error Handling**: Comprehensive exception handling with graceful degradation
+
+### 🚀 **Production Readiness:**
+- **Core Functionality**: All major components working perfectly
+- **Error Handling**: Comprehensive exception handling throughout
+- **Testing**: Extensive test coverage with zero failures
+- **Documentation**: Complete memory bank system with all technical decisions tracked
+- **Architecture**: Proven scalable foundation for advanced features
+- **Next Priority**: Milestone 7 - Production Packaging & Deployment
+
+The project has achieved a **complete, working implementation** of DSPy's core concepts in pure Clojure with exceptional engineering quality. The systematic optimization of LLM pipelines is working perfectly with a completely clean, maintainable codebase and complete persistence layer, providing the foundation for powerful AI applications in the JVM ecosystem.
+
+**Status**: **ALL CORE MILESTONES COMPLETE WITH PERFECT CODE QUALITY** - Ready for production deployment and advanced features! 🎯

@@ -6,6 +6,7 @@
   (:require [manifold.deferred :as d]
             [malli.core :as m]
             [dspy.module :as mod]
+            [dspy.storage.core :as storage]
             [clojure.tools.logging :as log]
             [clojure.string :as str]
             [clojure.set :as set]))
@@ -204,33 +205,103 @@
 
 ;; Checkpoint and persistence helpers
 
+;; Global storage instance - can be configured via environment
+(def ^:dynamic *storage*
+  "Dynamic storage instance for optimization persistence.
+   Can be rebound for testing or different storage configurations."
+  (delay (storage/make-storage (storage/env->storage-cfg))))
+
 (defn save-checkpoint
   "Save optimization progress to persistent storage.
 
-   Format allows resuming from any iteration point."
+   Args:
+     run-id - Unique run identifier
+     iteration - Current iteration number
+     result - Optimization result map containing :best-pipeline, :best-score, etc.
+
+   The checkpoint includes the full optimization state needed for resumption."
   [run-id iteration result]
-  ;; TODO: Implement when storage layer is ready (Milestone 6)
-  (log/debug "Checkpoint saved" {:run-id run-id :iteration iteration})
-  result)
+  (try
+    (let [storage-impl @*storage*
+          checkpoint-data {:iteration iteration
+                           :best-pipeline (:best-pipeline result)
+                           :best-score (:best-score result)
+                           :timestamp (System/currentTimeMillis)
+                           :result result}]
+      (storage/append-metric! storage-impl run-id iteration
+                              (:best-score result) checkpoint-data)
+      (log/debug "Checkpoint saved" {:run-id run-id :iteration iteration :score (:best-score result)})
+      result)
+    (catch Exception e
+      (log/warn e "Failed to save checkpoint" {:run-id run-id :iteration iteration})
+      result)))
 
 (defn load-checkpoint
   "Load optimization checkpoint from persistent storage.
 
-   Returns nil if no checkpoint exists for run-id."
+   Args:
+     run-id - Unique run identifier
+
+   Returns:
+     Checkpoint map with :iteration, :best-pipeline, :best-score, etc.
+     or nil if no checkpoint exists."
   [run-id]
-  ;; TODO: Implement when storage layer is ready (Milestone 6)
-  (log/debug "Checkpoint loaded" {:run-id run-id})
-  nil)
+  (try
+    (let [storage-impl @*storage*
+          history (storage/load-history storage-impl run-id)]
+      (when (seq history)
+        (let [latest-checkpoint (last history)]
+          (log/debug "Checkpoint loaded" {:run-id run-id
+                                          :iteration (:iter latest-checkpoint)
+                                          :score (:score latest-checkpoint)})
+          (:payload latest-checkpoint))))
+    (catch Exception e
+      (log/warn e "Failed to load checkpoint" {:run-id run-id})
+      nil)))
+
+(defn create-optimization-run
+  "Create a new optimization run with persistent storage.
+
+   Args:
+     pipeline - Initial pipeline to optimize
+     opts - Optimization options (may include :run-id)
+
+   Returns:
+     Run ID for tracking this optimization"
+  [pipeline opts]
+  (try
+    (let [storage-impl @*storage*
+          run-id (or (:run-id opts) (str (java.util.UUID/randomUUID)))]
+      (storage/create-run! storage-impl
+                           {:pipeline pipeline
+                            :opts opts
+                            :created-at (System/currentTimeMillis)})
+      (log/info "Created optimization run" {:run-id run-id})
+      run-id)
+    (catch Exception e
+      (log/warn e "Failed to create optimization run, continuing without persistence")
+      (str (java.util.UUID/randomUUID)))))
 
 (defn resume-optimization
   "Resume optimization from saved checkpoint.
+
+   Args:
+     run-id - Run identifier to resume
+     pipeline - Fallback pipeline if no checkpoint exists
+     trainset - Training dataset
+     metric - Scoring metric function
+     opts - Optimization options
 
    Continues from last saved iteration with same configuration."
   [run-id pipeline trainset metric opts]
   (if-let [checkpoint (load-checkpoint run-id)]
     (do (log/info "Resuming optimization from checkpoint"
-                  {:run-id run-id :iteration (:iteration checkpoint)})
+                  {:run-id run-id
+                   :iteration (:iteration checkpoint)
+                   :score (:best-score checkpoint)})
         (optimize (:best-pipeline checkpoint) trainset metric
-                  (assoc opts :start-iteration (:iteration checkpoint))))
+                  (assoc opts
+                         :run-id run-id
+                         :start-iteration (:iteration checkpoint))))
     (do (log/info "No checkpoint found, starting fresh optimization" {:run-id run-id})
-        (optimize pipeline trainset metric opts))))
+        (optimize pipeline trainset metric (assoc opts :run-id run-id)))))

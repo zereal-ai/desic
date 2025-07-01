@@ -18,11 +18,8 @@
   (testing "build-schema creates valid Malli schema"
     (let [sig-map {:inputs [:question] :outputs [:answer]}
           schema (#'sig/build-schema sig-map)]
-      (is (= [:map
-              {:closed false}
-              [:question string?]
-              [:answer string?]]
-             schema))
+      ;; Schema should be a compiled Malli schema object
+      (is (m/schema? schema))
 
       ;; Test that schema validates correctly
       (is (m/validate schema {:question "What is AI?" :answer "Artificial Intelligence"}))

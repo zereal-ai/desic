@@ -103,14 +103,15 @@
 
    Iteratively generates and evaluates pipeline candidates,
    keeping only the best performers for the next generation."
-  [initial-pipeline trainset metric {:keys [beam-width max-iterations concurrency]
+  [initial-pipeline trainset metric {:keys [beam-width max-iterations concurrency run-id checkpoint-interval]
                                      :or {beam-width 4
                                           max-iterations 10
-                                          concurrency 8}}]
+                                          concurrency 8
+                                          checkpoint-interval 5}}]
   ;; TODO: Add backend parameter when LLM modules need backend context for evaluation
 
   (let [start-time (System/currentTimeMillis)
-        run-id (str "beam-" (System/currentTimeMillis))]
+        run-id (or run-id (str "beam-" (System/currentTimeMillis)))]
 
     (log/info "Starting beam search optimization"
               {:run-id run-id
@@ -179,6 +180,17 @@
                                    :best-score best-score
                                    :selected-count (count selected-with-meta)
                                    :iteration-time-ms iter-time})
+
+                       ;; Save checkpoint if interval reached
+                       (when (and checkpoint-interval
+                                  (zero? (mod iteration checkpoint-interval)))
+                         (let [checkpoint-result {:best-pipeline (first selected-with-meta)
+                                                  :best-score best-score
+                                                  :history (conj history history-entry)
+                                                  :total-iterations iteration
+                                                  :total-time-ms (- (System/currentTimeMillis) start-time)
+                                                  :converged? false}]
+                           (opt/save-checkpoint run-id iteration checkpoint-result)))
 
                        ;; Continue to next iteration
                        (beam-iteration selected-with-meta
