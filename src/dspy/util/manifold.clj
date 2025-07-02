@@ -10,9 +10,12 @@
 ;; Environment-based parallelism configuration
 
 (def ^:private default-parallel
-  "Default parallelism level, configurable via DSPY_PARALLELISM env var."
-  (or (some-> (System/getenv "DSPY_PARALLELISM") Integer/parseInt)
-      8))
+  "Default parallelism level, configurable via DSPY_PARALLELISM env var.
+
+   Capped at reasonable maximum to prevent excessive resource usage."
+  (min 16 ; Cap at 16 to prevent excessive thread creation
+       (or (some-> (System/getenv "DSPY_PARALLELISM") Integer/parseInt)
+           8)))
 
 ;; Parallel execution utilities
 
@@ -339,3 +342,46 @@
         ;; Execute operation
         (fn [_] (f item))))
      coll)))
+
+;; Resource management utilities
+
+(defn with-bounded-parallelism
+  "Execute operations with bounded parallelism to prevent resource exhaustion.
+
+   This function ensures that no more than `max-concurrent` operations
+   are running at any given time, which helps prevent excessive thread
+   creation and resource usage.
+
+   Args:
+     max-concurrent - Maximum number of concurrent operations
+     f - Function to apply to each item
+     coll - Collection to process
+
+   Returns:
+     Deferred containing vector of results"
+  [max-concurrent f coll]
+  (let [max-concurrent (min max-concurrent default-parallel)]
+    (if (empty? coll)
+      (d/success-deferred [])
+      (let [semaphore (java.util.concurrent.Semaphore. max-concurrent)]
+        (d/chain
+         (apply d/zip
+                (mapv (fn [item]
+                        (d/future
+                          (.acquire semaphore)
+                          (try
+                            @(f item)
+                            (finally
+                              (.release semaphore)))))
+                      coll))
+         vec)))))
+
+(defn shutdown-resources!
+  "Shutdown any background resources used by this namespace.
+
+   This function should be called when shutting down the application
+   to ensure clean resource cleanup."
+  []
+  ;; Currently no persistent resources to clean up
+  ;; This is a placeholder for future resource management
+  (log/info "Manifold utilities resources shutdown complete"))

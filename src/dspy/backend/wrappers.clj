@@ -5,6 +5,7 @@
    retry logic, and other cross-cutting concerns to any ILlmBackend implementation."
   (:require [dspy.backend.protocol :as bp]
             [manifold.deferred :as d]
+            [manifold.time :as mt]
             [clojure.tools.logging :as log]))
 
 ;; Rate limiting wrapper
@@ -39,9 +40,7 @@
                               delay-needed (max 0 (- my-slot-time now))]
                           (if (zero? delay-needed)
                             (d/success-deferred :immediate)
-                            (d/future
-                              (Thread/sleep (long delay-needed))
-                              :delayed))))]
+                            (mt/in delay-needed #(d/success-deferred :delayed)))))]
 
     (reify bp/ILlmBackend
       (-generate [_ prompt opts]
@@ -142,7 +141,7 @@
                               :delay (calculate-delay attempt)
                               :error (.getMessage error)})
                    (d/chain
-                    (d/future (Thread/sleep (calculate-delay attempt)) :done)
+                    (mt/in (calculate-delay attempt) #(d/success-deferred :done))
                     (fn [_] (retry-operation operation (inc attempt)))))
                  (d/error-deferred error)))))]
 

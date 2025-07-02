@@ -126,9 +126,9 @@
             result @(bp/with-timeout quick-deferred 1000)]
         (is (= {:status :ok :value {:result "ok"}} result))))
 
-    (testing "times out for slow operations"
-      (let [slow-deferred (d/future (Thread/sleep 100) {:result "never reached"})
-            result @(bp/with-timeout slow-deferred 50)]
+    (testing "times out for non-completing operations"
+      (let [never-completes (d/deferred)
+            result @(bp/with-timeout never-completes 50)]
         (is (= {:status :timeout} result))))))
 
 ;; Test error handling

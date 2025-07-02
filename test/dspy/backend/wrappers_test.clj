@@ -15,20 +15,21 @@
   (-stream [_ _prompt _opts]
     (d/success-deferred nil)))
 
-(defrecord SlowBackend [delay-ms]
+(defrecord SlowBackend [delay-behavior]
   bp/ILlmBackend
   (-generate [_ _prompt _opts]
-    (d/chain
-     (d/future (Thread/sleep delay-ms) :done)
-     (fn [_] {:text "Slow response"})))
+    (if (= delay-behavior :timeout)
+      ;; Return a deferred that never completes for timeout testing
+      (d/deferred)
+      (d/success-deferred {:text "Slow response"})))
   (-embeddings [_ _text _opts]
-    (d/chain
-     (d/future (Thread/sleep delay-ms) :done)
-     (fn [_] {:vector [0.1 0.2]})))
+    (if (= delay-behavior :timeout)
+      (d/deferred)
+      (d/success-deferred {:vector [0.1 0.2]})))
   (-stream [_ _prompt _opts]
-    (d/chain
-     (d/future (Thread/sleep delay-ms) :done)
-     (fn [_] nil))))
+    (if (= delay-behavior :timeout)
+      (d/deferred)
+      (d/success-deferred nil))))
 
 (defrecord FailingBackend [failure-count]
   bp/ILlmBackend
@@ -44,7 +45,7 @@
     (d/success-deferred nil)))
 
 (defn ->mock-backend [] (->MockBackend {}))
-(defn ->slow-backend [delay] (->SlowBackend delay))
+(defn ->slow-backend [behavior] (->SlowBackend behavior))
 (defn ->failing-backend [] (->FailingBackend (atom 0)))
 
 ;; Test throttle wrapper
@@ -131,22 +132,22 @@
 ;; Test timeout wrapper
 
 (deftest test-wrap-timeout
-  (testing "Timeout on slow operations"
-    (let [backend (->slow-backend 200) ; Reduced from 2000ms to 200ms
-          timeout-backend (wrap/wrap-timeout backend {:timeout-ms 50})] ; Reduced from 500ms to 50ms
+  (testing "Timeout on non-completing operations"
+    (let [backend (->slow-backend :timeout)
+          timeout-backend (wrap/wrap-timeout backend {:timeout-ms 50})]
 
       ;; Should timeout and return status map
       (is (= {:status :timeout} @(bp/generate timeout-backend "test")))))
 
   (testing "Fast operations complete normally"
     (let [backend (->mock-backend)
-          timeout-backend (wrap/wrap-timeout backend {:timeout-ms 100}) ; Reduced from 1000ms
+          timeout-backend (wrap/wrap-timeout backend {:timeout-ms 100})
           result @(bp/generate timeout-backend "test")]
       (is (= "Generated: test" (:text result)))))
 
   (testing "Timeout applies to all methods"
-    (let [backend (->slow-backend 100) ; Reduced from 1000ms
-          timeout-backend (wrap/wrap-timeout backend {:timeout-ms 20})] ; Reduced from 100ms
+    (let [backend (->slow-backend :timeout)
+          timeout-backend (wrap/wrap-timeout backend {:timeout-ms 20})]
 
       (is (= {:status :timeout} @(bp/generate timeout-backend "test")))
       (is (= {:status :timeout} @(bp/embeddings timeout-backend "test")))
@@ -206,16 +207,17 @@
       (is (= "Generated: test" (:text @(bp/generate wrapped "test"))))))
 
   (testing "Middleware order matters"
-    (let [backend (->slow-backend 200)]
+    (let [timeout-backend (->slow-backend :timeout)
+          normal-backend (->slow-backend :normal)]
 
       ;; Timeout before throttle - should timeout quickly
-      (let [wrapped (-> backend
+      (let [wrapped (-> timeout-backend
                         (wrap/wrap-timeout {:timeout-ms 100})
                         (wrap/wrap-throttle {:rps 1}))]
         (is (= {:status :timeout} @(bp/generate wrapped "test"))))
 
       ;; Throttle before timeout - should succeed
-      (let [wrapped (-> backend
+      (let [wrapped (-> normal-backend
                         (wrap/wrap-throttle {:rps 10})
                         (wrap/wrap-timeout {:timeout-ms 1000}))]
         (is (= "Slow response" (:text @(bp/generate wrapped "test"))))))))

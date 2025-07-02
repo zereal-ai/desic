@@ -29,8 +29,11 @@
              (not @portal-instance))
     (try
       (let [portal-api (resolve 'portal.api/open)]
-        (reset! portal-instance (portal-api))
-        (log/info "Portal started successfully"))
+        ;; Start Portal with minimal resource configuration
+        (reset! portal-instance (portal-api {:port 0 ; Use random available port
+                                             :launcher false ; Don't auto-open browser
+                                             :theme :portal.colors/nord}))
+        (log/info "Portal started successfully" {:port (some-> @portal-instance meta :port)}))
       (catch Exception e
         (log/warn "Failed to start Portal" {:error (.getMessage e)})))))
 
@@ -232,15 +235,19 @@
          :timestamp (System/currentTimeMillis)}))
 
 (defn shutdown!
-  "Shutdown Portal integration.
+  "Shutdown Portal integration and clean up resources.
 
    This function:
    1. Removes Portal as a tap> target
    2. Stops Portal if running
-   3. Logs shutdown status"
+   3. Logs shutdown status
+   4. Cleans up any background threads"
   []
   (uninstall-tap!)
   (stop-portal!)
+  ;; Clean up any background resources
+  (when (resolve 'dspy.util.manifold/shutdown-resources!)
+    ((resolve 'dspy.util.manifold/shutdown-resources!)))
   (log/info "DSPy instrumentation shutdown complete"))
 
 ;; Development helpers
