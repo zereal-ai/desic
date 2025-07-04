@@ -100,3 +100,54 @@
           result @(util/with-resource resource operation cleanup)]
       (is (= "processed-test-resource" result))
       (is @cleanup-called?))))
+
+(deftest test-timing-behavior
+  (testing "Rate limiting with measurable delays"
+    ;; This test verifies that rate limiting actually works by measuring timing
+    (let [items [1 2 3]
+          call-times (atom [])
+          operation (fn [x]
+                      (swap! call-times conj (System/currentTimeMillis))
+                      (d/success-deferred (inc x)))
+          start-time (System/currentTimeMillis)
+          ;; Use 100 RPS = 10ms between requests (minimal but measurable)
+          result @(util/rate-limited-parallel-map 1 100 operation items)
+          end-time (System/currentTimeMillis)
+          elapsed (- end-time start-time)]
+      (is (= [2 3 4] result))
+      (is (= 3 (count @call-times)))
+      ;; With 3 items at 100 RPS (10ms apart), should take at least 20ms
+      (is (>= elapsed 15) (str "Expected at least 15ms for rate limiting, got " elapsed "ms"))
+      ;; Verify calls were actually spaced out
+      (let [times @call-times
+            gaps (map - (rest times) times)]
+        (is (every? #(>= % 5) gaps) "Calls should be spaced at least 5ms apart"))))
+
+  (testing "Retry backoff with measurable delays"
+    ;; This test verifies that retry backoff actually works
+    (let [call-count (atom 0)
+          call-times (atom [])
+          operation (fn []
+                      (let [attempt (swap! call-count inc)]
+                        (swap! call-times conj (System/currentTimeMillis))
+                        (if (< attempt 3)
+                          (d/error-deferred (ex-info "Temporary failure" {:attempt attempt}))
+                          (d/success-deferred "success"))))
+          ;; Use 5ms initial delay with 2x backoff = 5ms, 10ms
+          result @(util/retry-with-backoff operation 5 5 2.0 30000 (constantly true))]
+      (is (= "success" result))
+      (is (= 3 @call-count))
+      ;; Verify there were actual delays between calls
+      (let [times @call-times
+            gaps (map - (rest times) times)]
+        (is (>= (count gaps) 2) "Should have at least 2 gaps between 3 calls")
+        (is (every? #(>= % 3) gaps) "Should have at least 3ms between retry attempts"))))
+
+  (testing "Timeout functionality"
+    ;; Test that timeout actually works
+    (let [slow-op (d/deferred)
+          timeout-result (util/with-timeout slow-op 10)] ; 10ms timeout
+      (let [result @timeout-result]
+        (is (= {:status :timeout} result))
+        ;; Clean up
+        (d/success! slow-op :cleanup)))))
